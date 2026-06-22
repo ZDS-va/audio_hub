@@ -5,11 +5,11 @@ echo "==================================="
 echo "🚀 开始部署 Audio Hub"
 echo "==================================="
 
-# 0. 深度清理系统空间 (防止 Docker 空间不足)
-echo "🧹 正在深度清理 Docker 缓存以释放磁盘空间..."
-docker system prune -a -f --volumes
-# 可选：如果你确定之前的 builder 缓存没用，可以开启下面这句
-# docker builder prune -a -f
+# 0. 清理悬空的无用镜像和停止的容器 (保留缓存，加快下次构建速度)
+echo "🧹 正在清理无用镜像和缓存..."
+docker container prune -f
+docker image prune -f
+# 如果真的遇到空间不足，再手动执行 docker system prune -a -f --volumes
 
 # 1. 拉取最新代码
 echo "📦 正在从 GitHub 拉取最新代码..."
