@@ -1,5 +1,18 @@
 import edge_tts
 
+async def get_chinese_voices() -> list:
+    """
+    获取所有中文音色列表
+    """
+    try:
+        voices = await edge_tts.list_voices()
+        # 筛选 zh-CN, zh-HK, zh-TW 等中文音色
+        cn_voices = [v for v in voices if v.get("Locale", "").startswith("zh-")]
+        return cn_voices
+    except Exception as e:
+        print(f"Failed to list voices: {e}")
+        return []
+
 async def generate_tts_audio(text: str, output_path: str, voice: str = "zh-CN-XiaoxiaoNeural") -> bool:
     """
     将文本转换为语音并保存为 mp3 文件，使用 edge-tts

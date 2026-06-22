@@ -61,7 +61,8 @@ async def process_tts_tasks(tasks_info: list):
             filepath = get_download_path(filename)
             
             # 调用 edge-tts 生成音频
-            success = await generate_tts_audio(t["text"], filepath)
+            voice = t.get("voice", "zh-CN-XiaoxiaoNeural")
+            success = await generate_tts_audio(t["text"], filepath, voice=voice)
             
             if success and os.path.exists(filepath):
                 record.status = "completed"
@@ -114,11 +115,73 @@ async def mock_background_worker(task_id: str, delay: int = 5):
     finally:
         db.close()
 
+async def process_video_tasks(tasks_info: list):
+    """
+    处理视频下载任务
+    """
+    for t in tasks_info:
+        db = SessionLocal()
+        record = None
+        try:
+            record = db.query(AudioRecord).filter(AudioRecord.task_id == t["task_id"]).first()
+            if not record: continue
+            
+            record.status = "processing"
+            db.commit()
+            
+            safe_title = "".join([c for c in record.title if c.isalnum() or c in [' ', '-', '_']]).strip()
+            filename = f"Video_{safe_title}_{record.task_id}.mp3".replace(" ", "_")
+            filepath = get_download_path(filename)
+            
+            success = await extract_audio_from_video(t["url"], filepath)
+            
+            if success and os.path.exists(filepath):
+                record.status = "completed"
+                record.filename = filename
+                record.file_size = round(os.path.getsize(filepath) / 1024, 2)
+            else:
+                record.status = "failed"
+                record.error_msg = "视频下载或音频提取失败"
+            db.commit()
+            
+        except Exception as e:
+            if record:
+                record.status = "failed"
+                record.error_msg = str(e)
+                db.commit()
+        finally:
+            db.close()
+
 # ---------------- 业务接口 ----------------
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to Audio Hub API"}
+
+@app.get("/api/tts/voices")
+async def list_voices():
+    """获取所有中文音色"""
+    from services.tts_service import get_chinese_voices
+    voices = await get_chinese_voices()
+    return {"status": "success", "data": voices}
+
+@app.get("/api/tts/preview")
+async def preview_voice(voice: str):
+    """动态生成一小段试听音频"""
+    temp_filename = f"preview_{voice}.mp3"
+    filepath = get_download_path(temp_filename)
+    
+    # 如果本地已经有该音色的试听文件，直接返回
+    if not os.path.exists(filepath):
+        success = await generate_tts_audio(f"你好，我是 {voice.split('-')[-1].replace('Neural', '')}，欢迎使用音频下载服务。", filepath, voice)
+        if not success:
+            raise HTTPException(status_code=500, detail="生成试听音频失败")
+            
+    return {"status": "success", "url": f"/downloads/{temp_filename}"}
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "zh-CN-XiaoxiaoNeural"
 
 @app.post("/api/tts")
 async def tts(req: TTSRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -134,12 +197,18 @@ async def tts(req: TTSRequest, background_tasks: BackgroundTasks, db: Session = 
     db.commit()
     
     # 提交到后台真实的 TTS 任务执行
-    tasks = [{"task_id": task_id, "text": req.text}]
+    tasks = [{"task_id": task_id, "text": req.text, "voice": req.voice}]
     background_tasks.add_task(process_tts_tasks, tasks)
     return {"status": "success", "message": "TTS任务已提交", "task_id": task_id}
 
+from fastapi import Form
 @app.post("/api/tts/file")
-async def tts_file(background_tasks: BackgroundTasks, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def tts_file(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...), 
+    voice: str = Form("zh-CN-XiaoxiaoNeural"),
+    db: Session = Depends(get_db)
+):
     # 保存上传的文件到临时目录
     temp_path = os.path.join(TEMP_DIR, f"{uuid.uuid4().hex[:8]}_{file.filename}")
     with open(temp_path, "wb") as f:
@@ -176,7 +245,7 @@ async def tts_file(background_tasks: BackgroundTasks, file: UploadFile = File(..
                 status="pending"
             )
             db.add(new_record)
-            tasks_info.append({"task_id": task_id, "text": chunk_text})
+            tasks_info.append({"task_id": task_id, "text": chunk_text, "voice": voice})
             
     db.commit()
     
@@ -191,19 +260,34 @@ async def tts_file(background_tasks: BackgroundTasks, file: UploadFile = File(..
 
 @app.post("/api/video")
 async def video(req: VideoRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    task_id = str(uuid.uuid4())[:8]
+    from services.video_service import extract_video_info
     
-    new_record = AudioRecord(
-        task_id=task_id,
-        title=f"Video: {req.url}",
-        source_type="video",
-        source_url=req.url
-    )
-    db.add(new_record)
+    try:
+        # 提取视频/播放列表信息
+        video_entries = await asyncio.to_thread(extract_video_info, req.url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"解析视频链接失败: {str(e)}")
+        
+    tasks_info = []
+    for entry in video_entries:
+        task_id = str(uuid.uuid4())[:8]
+        new_record = AudioRecord(
+            task_id=task_id,
+            title=f"Video: {entry['title'][:50]}",
+            source_type="video",
+            source_url=entry['url'],
+            status="pending"
+        )
+        db.add(new_record)
+        tasks_info.append({"task_id": task_id, "url": entry['url']})
+        
     db.commit()
     
-    background_tasks.add_task(mock_background_worker, task_id, 6)
-    return {"status": "success", "message": "视频提取任务已提交", "task_id": task_id}
+    if tasks_info:
+        background_tasks.add_task(process_video_tasks, tasks_info)
+        
+    msg = f"已解析出 {len(tasks_info)} 个视频提取任务并进入后台排队。" if len(tasks_info) > 1 else "视频提取任务已提交。"
+    return {"status": "success", "message": msg, "task_id": tasks_info[0]["task_id"] if tasks_info else ""}
 
 @app.post("/api/podcast")
 async def podcast(req: PodcastRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -224,9 +308,15 @@ async def podcast(req: PodcastRequest, background_tasks: BackgroundTasks, db: Se
 # ---------------- 任务与文件管理接口 ----------------
 
 @app.get("/api/tasks")
-async def get_tasks(db: Session = Depends(get_db)):
-    # 过滤掉已标记为 deleted 的记录，按创建时间倒序
-    records = db.query(AudioRecord).filter(AudioRecord.status != "deleted").order_by(AudioRecord.created_at.desc()).all()
+async def get_tasks(status: str = "all", page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
+    # 过滤掉已标记为 deleted 的记录
+    query = db.query(AudioRecord).filter(AudioRecord.status != "deleted")
+    
+    if status != "all":
+        query = query.filter(AudioRecord.status == status)
+        
+    total = query.count()
+    records = query.order_by(AudioRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     
     result = []
     for r in records:
@@ -240,7 +330,16 @@ async def get_tasks(db: Session = Depends(get_db)):
             "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S")
         })
         
-    return {"status": "success", "data": result}
+    return {
+        "status": "success", 
+        "data": {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size,
+            "items": result
+        }
+    }
 
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str, db: Session = Depends(get_db)):

@@ -9,4 +9,5 @@ python-multipart>=0.0.9
 edge-tts>=6.1.12
 EbookLib>=0.18.1
 beautifulsoup4>=4.12.0
-# 后续功能对应的依赖库 (如 yt-dlp 等) 在开发具体功能时补充
+yt-dlp>=2023.12.30
+# 后续功能对应的依赖库在开发具体功能时补充
