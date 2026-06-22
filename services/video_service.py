@@ -11,8 +11,10 @@ def extract_video_info(url: str, cookie: str = None) -> list:
         'extract_flat': True, # 只提取信息，不下载，速度快
         'quiet': True,
         'no_warnings': True,
+        'extractor_args': {'bilibili': {'player_client': ['web']}},
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            'Referer': 'https://www.bilibili.com'
         }
     }
     if cookie:
@@ -59,8 +61,10 @@ async def extract_audio_from_video(video_url: str, output_path: str, cookie: str
             'outtmpl': output_path.replace('.mp3', ''),
             'quiet': True,
             'no_warnings': True,
+            'extractor_args': {'bilibili': {'player_client': ['web']}},
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+                'Referer': 'https://www.bilibili.com'
             }
         }
         if cookie:

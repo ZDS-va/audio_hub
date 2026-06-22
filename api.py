@@ -49,7 +49,7 @@ async def process_tts_tasks(tasks_info: list):
         record = None
         try:
             record = db.query(AudioRecord).filter(AudioRecord.task_id == t["task_id"]).first()
-            if not record or record.status == "deleted":
+            if not record:
                 continue
             
             # 标记为处理中
@@ -92,7 +92,7 @@ async def mock_background_worker(task_id: str, delay: int = 5):
     db = SessionLocal()
     try:
         record = db.query(AudioRecord).filter(AudioRecord.task_id == task_id).first()
-        if not record or record.status == "deleted": return
+        if not record: return
         
         record.status = "processing"
         db.commit()
@@ -125,7 +125,7 @@ async def process_video_tasks(tasks_info: list):
         record = None
         try:
             record = db.query(AudioRecord).filter(AudioRecord.task_id == t["task_id"]).first()
-            if not record or record.status == "deleted": continue
+            if not record: continue
             
             record.status = "processing"
             db.commit()
@@ -310,8 +310,7 @@ async def podcast(req: PodcastRequest, background_tasks: BackgroundTasks, db: Se
 
 @app.get("/api/tasks")
 async def get_tasks(status: str = "all", page: int = 1, page_size: int = 10, db: Session = Depends(get_db)):
-    # 过滤掉已标记为 deleted 的记录
-    query = db.query(AudioRecord).filter(AudioRecord.status != "deleted")
+    query = db.query(AudioRecord)
     
     if status != "all":
         query = query.filter(AudioRecord.status == status)
@@ -352,9 +351,12 @@ async def delete_task(task_id: str, db: Session = Depends(get_db)):
     if record.filename:
         filepath = os.path.join(DOWNLOAD_DIR, record.filename)
         if os.path.exists(filepath):
-            os.remove(filepath)
+            try:
+                os.remove(filepath)
+            except:
+                pass
             
-    # 逻辑删除数据库记录
-    record.status = "deleted"
+    # 彻底从数据库删除记录，防止后台任务还能查到并继续处理
+    db.delete(record)
     db.commit()
-    return {"status": "success", "message": "任务及文件已删除"}
+    return {"status": "success", "message": "任务及文件已彻底删除"}

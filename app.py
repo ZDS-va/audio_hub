@@ -16,11 +16,12 @@ PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
 st.title("🎧 Audio Hub - 音频下载服务")
 st.markdown("欢迎使用音频下载工具。任务已支持后台异步处理，提交后请前往「📂 下载与任务管理」查看进度。")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "💬 文本转语音", 
     "🎬 视频提取", 
     "🎙️ 播客下载",
-    "📂 下载与任务管理"
+    "📂 下载与任务管理",
+    "⚙️ 数据库管理"
 ])
 
 # 辅助函数：提交任务
@@ -123,6 +124,43 @@ with tab3:
         else:
             st.warning("请输入播客链接")
 
+with tab5:
+    st.header("数据库管理")
+    st.caption("这里直接展示数据库中的所有原始记录，可用于调试或彻底清理异常数据。")
+    
+    if st.button("刷新数据 🔄"):
+        pass
+        
+    try:
+        # 复用 tasks 接口，但查询所有数据 (包括原来可能被隐藏的)
+        res = requests.get(f"{API_BASE_URL}/tasks", params={"status": "all", "page": 1, "page_size": 100})
+        if res.status_code == 200:
+            all_tasks = res.json().get("data", {}).get("items", [])
+            if all_tasks:
+                import pandas as pd
+                df = pd.DataFrame(all_tasks)
+                # 调整显示的列顺序
+                cols = ["task_id", "status", "source_type", "title", "created_at", "file_size"]
+                df = df[[c for c in cols if c in df.columns]]
+                st.dataframe(df, use_container_width=True)
+                
+                st.subheader("清理操作")
+                task_to_del = st.text_input("输入要彻底删除的 Task ID:")
+                if st.button("🚨 彻底从数据库删除"):
+                    if task_to_del.strip():
+                        del_res = requests.delete(f"{API_BASE_URL}/tasks/{task_to_del.strip()}")
+                        if del_res.status_code == 200:
+                            st.success(f"已彻底删除记录: {task_to_del}")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error("删除失败，可能记录不存在")
+                    else:
+                        st.warning("请输入 Task ID")
+            else:
+                st.info("数据库目前为空")
+    except Exception as e:
+        st.error(f"加载数据库数据失败: {e}")
 with tab4:
     st.header("下载与任务管理")
     
