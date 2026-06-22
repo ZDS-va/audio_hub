@@ -11,7 +11,21 @@ st.set_page_config(
 
 # 读取环境变量，适配 Docker 部署与本地开发
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+DEFAULT_PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+
+# 侧边栏配置区
+with st.sidebar:
+    st.header("⚙️ 部署配置")
+    st.caption("如果你在云服务器上运行，请务必在这里填入服务器的公网 IP 或域名，否则下载链接和试听功能将指向 localhost 导致无法访问。")
+    
+    if "public_url" not in st.session_state:
+        st.session_state.public_url = DEFAULT_PUBLIC_BASE_URL
+        
+    user_url = st.text_input("服务器公网地址 (带 http/https 和端口):", value=st.session_state.public_url, help="例如: http://123.45.67.89:8000")
+    if user_url != st.session_state.public_url:
+        st.session_state.public_url = user_url
+        
+    PUBLIC_BASE_URL = st.session_state.public_url.rstrip("/")
 
 st.title("🎧 Audio Hub - 音频下载服务")
 st.markdown("欢迎使用音频下载工具。任务已支持后台异步处理，提交后请前往「📂 下载与任务管理」查看进度。")
