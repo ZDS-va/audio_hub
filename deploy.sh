@@ -5,7 +5,13 @@ echo "==================================="
 echo "🚀 开始部署 Audio Hub"
 echo "==================================="
 
-# 1. 拉取最新代码 (前提是你已经 clone 过并配置好 git)
+# 0. 深度清理系统空间 (防止 Docker 空间不足)
+echo "🧹 正在深度清理 Docker 缓存以释放磁盘空间..."
+docker system prune -a -f --volumes
+# 可选：如果你确定之前的 builder 缓存没用，可以开启下面这句
+# docker builder prune -a -f
+
+# 1. 拉取最新代码
 echo "📦 正在从 GitHub 拉取最新代码..."
 git pull origin main
 
@@ -13,12 +19,8 @@ git pull origin main
 echo "🐳 正在重新构建并启动容器..."
 docker compose up -d --build
 
-# 3. 清理无用的镜像 (可选，防止服务器磁盘爆满)
-echo "🧹 正在清理悬空镜像..."
-docker image prune -f
-
 echo "==================================="
 echo "✅ 部署完成！"
-echo "👉 前端访问: http://<你的服务器IP>:8502"
-echo "👉 后端访问: http://<你的服务器IP>:8002/docs"
+echo "👉 前端访问: http://<你的服务器IP>:8501"
+echo "👉 后端访问: http://<你的服务器IP>:8000/docs"
 echo "==================================="
