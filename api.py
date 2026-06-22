@@ -33,6 +33,7 @@ class TTSRequest(BaseModel):
 
 class VideoRequest(BaseModel):
     url: str
+    cookie: str = None
 
 class PodcastRequest(BaseModel):
     url: str
@@ -48,7 +49,7 @@ async def process_tts_tasks(tasks_info: list):
         record = None
         try:
             record = db.query(AudioRecord).filter(AudioRecord.task_id == t["task_id"]).first()
-            if not record:
+            if not record or record.status == "deleted":
                 continue
             
             # 标记为处理中
@@ -91,7 +92,7 @@ async def mock_background_worker(task_id: str, delay: int = 5):
     db = SessionLocal()
     try:
         record = db.query(AudioRecord).filter(AudioRecord.task_id == task_id).first()
-        if not record: return
+        if not record or record.status == "deleted": return
         
         record.status = "processing"
         db.commit()
@@ -124,7 +125,7 @@ async def process_video_tasks(tasks_info: list):
         record = None
         try:
             record = db.query(AudioRecord).filter(AudioRecord.task_id == t["task_id"]).first()
-            if not record: continue
+            if not record or record.status == "deleted": continue
             
             record.status = "processing"
             db.commit()
@@ -133,7 +134,7 @@ async def process_video_tasks(tasks_info: list):
             filename = f"Video_{safe_title}_{record.task_id}.mp3".replace(" ", "_")
             filepath = get_download_path(filename)
             
-            success = await extract_audio_from_video(t["url"], filepath)
+            success = await extract_audio_from_video(t["url"], filepath, t.get("cookie"))
             
             if success and os.path.exists(filepath):
                 record.status = "completed"
@@ -264,7 +265,7 @@ async def video(req: VideoRequest, background_tasks: BackgroundTasks, db: Sessio
     
     try:
         # 提取视频/播放列表信息
-        video_entries = await asyncio.to_thread(extract_video_info, req.url)
+        video_entries = await asyncio.to_thread(extract_video_info, req.url, req.cookie)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"解析视频链接失败: {str(e)}")
         
@@ -279,7 +280,7 @@ async def video(req: VideoRequest, background_tasks: BackgroundTasks, db: Sessio
             status="pending"
         )
         db.add(new_record)
-        tasks_info.append({"task_id": task_id, "url": entry['url']})
+        tasks_info.append({"task_id": task_id, "url": entry['url'], "cookie": req.cookie})
         
     db.commit()
     

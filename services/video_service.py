@@ -1,7 +1,7 @@
 import yt_dlp
 import asyncio
 
-def extract_video_info(url: str) -> list:
+def extract_video_info(url: str, cookie: str = None) -> list:
     """
     使用 yt-dlp 解析视频或播放列表的信息
     Returns:
@@ -10,8 +10,14 @@ def extract_video_info(url: str) -> list:
     ydl_opts = {
         'extract_flat': True, # 只提取信息，不下载，速度快
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+        }
     }
+    if cookie:
+        ydl_opts['http_headers']['Cookie'] = f"SESSDATA={cookie};"
+        
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         
@@ -30,7 +36,7 @@ def extract_video_info(url: str) -> list:
             
         return entries
 
-async def extract_audio_from_video(video_url: str, output_path: str) -> bool:
+async def extract_audio_from_video(video_url: str, output_path: str, cookie: str = None) -> bool:
     """
     从视频链接中提取音频并保存为 mp3 文件
     
@@ -52,8 +58,14 @@ async def extract_audio_from_video(video_url: str, output_path: str) -> bool:
             # yt-dlp 会自动加 .mp3，所以去掉传入路径的后缀
             'outtmpl': output_path.replace('.mp3', ''),
             'quiet': True,
-            'no_warnings': True
+            'no_warnings': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            }
         }
+        if cookie:
+            ydl_opts['http_headers']['Cookie'] = f"SESSDATA={cookie};"
+            
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
             

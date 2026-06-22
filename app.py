@@ -52,7 +52,7 @@ with tab1:
         return []
     
     voices = fetch_voices()
-    voice_options = {v["ShortName"]: f"{v['FriendlyName']} ({v['Gender']})" for v in voices} if voices else {"zh-CN-XiaoxiaoNeural": "晓晓 (Female)"}
+    voice_options = {v["ShortName"]: v.get("DisplayName", f"{v['FriendlyName']} ({v['Gender']})") for v in voices} if voices else {"zh-CN-XiaoxiaoNeural": "晓晓 (温柔亲切) | 大陆普通话·女声"}
     
     col_v1, col_v2 = st.columns([3, 1])
     with col_v1:
@@ -105,9 +105,12 @@ with tab1:
 with tab2:
     st.header("视频链接提取音频")
     video_url = st.text_input("请输入视频链接 (例如 B站、YouTube 等)")
+    st.info("💡 如果下载 B 站视频失败 (遇到 412 报错)，请在下方输入你的 B 站 SESSDATA cookie (可选)。")
+    cookie_input = st.text_input("B站 SESSDATA (可选)", type="password")
+    
     if st.button("提取音频"):
         if video_url.strip():
-            submit_task("video", {"url": video_url})
+            submit_task("video", {"url": video_url, "cookie": cookie_input.strip() if cookie_input else None})
         else:
             st.warning("请输入视频链接")
 
